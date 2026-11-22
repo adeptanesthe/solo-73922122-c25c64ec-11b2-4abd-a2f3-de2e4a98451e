@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>唤醒缺报核对</title>
+<style>
+  :root { --bd: #d0d7de; --bg: #f6f8fa; --blue: #0969da; --red: #cf222e; --amber: #9a6700; --green: #1a7f37; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; color: #1f2328; background: var(--bg); }
+  header { background: #24292f; color: #fff; padding: 14px 24px; }
+  header h1 { margin: 0; font-size: 18px; }
+  header p { margin: 4px 0 0; font-size: 13px; color: #c9d1d9; }
+  main { max-width: 1180px; margin: 20px auto; padding: 0 16px; display: grid; grid-template-columns: 420px 1fr; gap: 18px; }
+  @media (max-width: 960px) { main { grid-template-columns: 1fr; } }
+  .card { background: #fff; border: 1px solid var(--bd); border-radius: 8px; padding: 16px; }
+  .card h2 { margin: 0 0 12px; font-size: 15px; }
+  label { display: block; font-size: 13px; font-weight: 600; margin: 10px 0 4px; }
+  input[type=number], textarea { width: 100%; padding: 7px 9px; border: 1px solid var(--bd); border-radius: 6px; font-size: 13px; font-family: inherit; }
+  textarea { resize: vertical; font-family: ui-monospace, monospace; }
+  .row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+  .hint { font-size: 12px; color: #656d76; margin-top: 3px; }
+  button { margin-top: 14px; width: 100%; padding: 9px; border: 0; border-radius: 6px; background: var(--blue); color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; }
+  button:disabled { background: #8c959f; cursor: not-allowed; }
+  .fileline { display: flex; align-items: center; gap: 8px; font-size: 12px; margin-top: 6px; }
+  .fileline input[type=file] { font-size: 12px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+  .badge.ok { background: #dafbe1; color: var(--green); }
+  .badge.conflict { background: #ffebe9; color: var(--red); }
+  .badge.pending { background: #fff8c5; color: var(--amber); }
+  .banner { border-radius: 6px; padding: 10px 12px; font-size: 13px; margin-bottom: 12px; }
+  .banner.error { background: #ffebe9; border: 1px solid #ffabaf; color: var(--red); }
+  .banner.stale { background: #fff8c5; border: 1px solid #e3b341; color: var(--amber); }
+  .banner.info { background: #ddf4ff; border: 1px solid #54aeff; color: #0a3069; }
+  .meta { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px 14px; font-size: 13px; margin: 10px 0; }
+  .meta b { display: block; font-size: 17px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+  th, td { border: 1px solid var(--bd); padding: 5px 8px; text-align: left; }
+  th { background: var(--bg); position: sticky; top: 0; }
+  .table-wrap { max-height: 320px; overflow: auto; border: 1px solid var(--bd); border-radius: 6px; }
+  .section-title { display: flex; align-items: center; gap: 8px; margin: 16px 0 4px; font-size: 14px; font-weight: 600; }
+  a.dl { display: inline-block; margin-top: 10px; padding: 8px 14px; background: var(--green); color: #fff !important; text-decoration: none; border-radius: 6px; font-size: 13px; font-weight: 600; }
+  a.dl.disabled { background: #8c959f; pointer-events: none; }
+  code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+  .empty { color: #656d76; font-size: 13px; padding: 8px 0; }
+  .rs { font-family: ui-monospace, monospace; font-size: 12px; word-break: break-all; background: var(--bg); padding: 6px 8px; border-radius: 6px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>唤醒词缺报核对</h1>
+  <p>导入模型分数与回执，对缺报区间内的触发帧进行补记 / 待核 / 冲突判定</p>
+</header>
+<main>
+  <section class="card">
+    <h2>核对输入</h2>
+    <label for="scores">模型整数分数（最多 200000 帧，帧号从 0 起）</label>
+    <textarea id="scores" rows="8" placeholder="支持换行、逗号或空格分隔，例如&#10;12 3 88 5 90"></textarea>
+    <div class="fileline">
+      或从文件导入：<input type="file" id="scoresFile" accept=".txt,.csv,text/plain" />
+      <span id="fileName" class="hint"></span>
+    </div>
+    <div class="row">
+      <div><label for="threshold">设备阈值</label><input type="number" id="threshold" value="80" /></div>
+      <div><label for="cooldown">冷却帧数（0～2000）</label><input type="number" id="cooldown" value="2" min="0" max="2000" /></div>
+    </div>
+    <div class="row">
+      <div><label for="gapStart">缺报起点</label><input type="number" id="gapStart" value="0" min="0" /></div>
+      <div><label for="gapEnd">缺报终点（含）</label><input type="number" id="gapEnd" value="0" min="0" /></div>
+    </div>
+    <label for="receipts">已收到的触发帧号</label>
+    <textarea id="receipts" rows="4" placeholder="支持换行、逗号或空格分隔，例如 3 10 17"></textarea>
+    <p class="hint">录制开始时可能仍在冷却，剩余帧数 r ∈ [0, 冷却帧数]，每种 r 为一种解释，系统会对全部解释一次性核对。</p>
+    <button id="runBtn">开始核对</button>
+  </section>
+
+  <section class="card">
+    <h2>核对结论</h2>
+    <div id="banner"></div>
+    <div id="result" hidden>
+      <div id="statusLine"></div>
+      <div class="meta" id="meta"></div>
+      <div id="rsLine"></div>
+      <div id="downloadLine"></div>
+
+      <div class="section-title">补记列表（所有一致解释均触发）<span id="backfillBadge" class="badge ok"></span></div>
+      <div class="table-wrap"><table id="backfillTable"></table></div>
+
+      <div class="section-title">待核帧（仅部分一致解释触发）<span id="pendingBadge" class="badge pending"></span></div>
+      <div class="table-wrap"><table id="pendingTable"></table></div>
+
+      <div class="section-title" id="rejectTitle" hidden>各初始冷却解释的否决原因</div>
+      <div class="table-wrap"><table id="rejectTable"></table></div>
+    </div>
+    <div id="placeholder" class="empty">提交核对后，结论、补记列表与 CSV 下载会显示在这里。</div>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const inputIds = ["scores", "threshold", "cooldown", "gapStart", "gapEnd", "receipts"];
+let currentResultId = null;
+let dirty = false;
+
+function parseIntList(text, name) {
+  const tokens = text.split(/[\s,]+/).filter((t) => t.length > 0);
+  const out = [];
+  for (const t of tokens) {
+    if (!/^[+-]?\d+$/.test(t)) throw new Error(`${name}中存在非整数：“${t}”`);
+    out.push(Number(t));
+  }
+  return out;
+}
+
+function showBanner(kind, text) {
+  const el = $("banner");
+  if (!text) { el.innerHTML = ""; return; }
+  el.innerHTML = `<div class="banner ${kind}">${text}</div>`;
+}
+
+function clearResult(markStale) {
+  currentResultId = null;
+  $("result").hidden = true;
+  $("placeholder").hidden = false;
+  if (markStale) {
+    showBanner("stale", "输入已修改，旧结论与补记下载已撤下，请重新核对。");
+  }
+}
+
+inputIds.forEach((id) => $(id).addEventListener("input", () => {
+  dirty = true;
+  if (currentResultId !== null) clearResult(true);
+}));
+$("scoresFile").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  $("fileName").textContent = file.name;
+  $("scores").value = await file.text();
+  dirty = true;
+  if (currentResultId !== null) clearResult(true);
+});
+
+function renderTable(tableEl, headers, rows, emptyText) {
+  if (!rows.length) { tableEl.innerHTML = `<tr><td class="empty">${emptyText}</td></tr>`; return; }
+  tableEl.innerHTML = "<thead><tr>" + headers.map((h) => `<th>${h}</th>`).join("") + "</tr></thead>"
+    + "<tbody>" + rows.map((r) => "<tr>" + r.map((c) => `<td>${c}</td>`).join("") + "</tr>").join("") + "</tbody>";
+}
+
+function render(data) {
+  showBanner("", "");
+  currentResultId = data.result_id;
+  dirty = false;
+  $("result").hidden = false;
+  $("placeholder").hidden = true;
+
+  const s = data.stats;
+  if (data.status === "ok") {
+    $("statusLine").innerHTML = '<span class="badge ok">可补记</span> 存在与全部回执一致的解释。';
+    $("downloadLine").innerHTML =
+      `<a class="dl" href="/api/results/${currentResultId}/backfill.csv">下载补记列表 CSV（${s.backfill_count} 行）</a>`;
+    $("rejectTitle").hidden = true;
+    $("rejectTable").innerHTML = "";
+  } else {
+    $("statusLine").innerHTML = '<span class="badge conflict">冲突</span> 没有任何初始冷却解释能与回执一致，补记列表留空。';
+    $("downloadLine").innerHTML = '<a class="dl disabled" aria-disabled="true">无补记 CSV（冲突）</a>';
+    $("rejectTitle").hidden = false;
+    renderTable($("rejectTable"), ["初始冷却剩余 r", "否决原因"],
+      data.rejections.map((r) => [r.r, r.reason]), "");
+  }
+
+  $("meta").innerHTML = [
+    ["分数帧数", data.frame_count],
+    ["阈值 / 冷却", `${data.threshold} / ${data.cooldown}`],
+    ["缺报区间", `${data.gap_start}..${data.gap_end}（含首尾）`],
+    ["回执帧数", data.receipt_count],
+    ["解释总数", s.interpretation_count],
+    ["一致解释数", s.consistent_count],
+    ["补记帧（含区间内已回执）", s.backfill_count ?? 0],
+    ["其中新补记", s.backfill_new_count ?? 0],
+    ["待核帧", s.pending_count ?? 0],
+  ].map(([k, v]) => `<div><span class="hint">${k}</span><b>${v}</b></div>`).join("");
+
+  if (data.status === "ok") {
+    $("rsLine").innerHTML =
+      `<p class="hint">一致解释的初始冷却剩余 r（共 ${data.consistent_rs.length} 个）：</p>
+       <div class="rs">[${data.consistent_rs.join(", ")}]</div>`;
+    $("backfillBadge").textContent = `${s.backfill_count} 帧`;
+    $("pendingBadge").textContent = `${s.pending_count} 帧`;
+    renderTable($("backfillTable"), ["帧号", "分数", "状态"],
+      data.backfill.map((r) => [r.frame, r.score, r.status === "received" ? "已回执" : "新补记"]),
+      "无补记帧");
+    renderTable($("pendingTable"), ["帧号", "分数"],
+      data.pending.map((r) => [r.frame, r.score]), "无待核帧");
+  } else {
+    $("rsLine").innerHTML = "";
+    $("backfillBadge").textContent = "0 帧";
+    $("pendingBadge").textContent = "0 帧";
+    renderTable($("backfillTable"), ["帧号", "分数", "状态"], [], "冲突：补记列表留空");
+    renderTable($("pendingTable"), ["帧号", "分数"], [], "无待核帧");
+  }
+}
+
+$("runBtn").addEventListener("click", async () => {
+  let payload;
+  try {
+    const scores = parseIntList($("scores").value, "分数");
+    const receipts = parseIntList($("receipts").value, "回执帧号");
+    if (!scores.length) throw new Error("分数序列不能为空。");
+    payload = {
+      scores,
+      threshold: Number($("threshold").value),
+      cooldown: Number($("cooldown").value),
+      gap_start: Number($("gapStart").value),
+      gap_end: Number($("gapEnd").value),
+      receipts,
+    };
+  } catch (err) {
+    showBanner("error", `输入解析失败：${err.message}`);
+    return;
+  }
+
+  const btn = $("runBtn");
+  btn.disabled = true;
+  btn.textContent = "核对中…";
+  try {
+    const resp = await fetch("/api/check", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      showBanner("error", `核对被拒绝：${data.detail || resp.statusText}`);
+      clearResult(false);
+      return;
+    }
+    render(data);
+  } catch (err) {
+    showBanner("error", `请求失败：${err.message}`);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "开始核对";
+  }
+});
+</script>
+</body>
+</html>

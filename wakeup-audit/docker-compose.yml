@@ -1,0 +1,7 @@
+services:
+  wakeup-audit:
+    build: .
+    container_name: wakeup-audit
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
