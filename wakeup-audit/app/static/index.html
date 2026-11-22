@@ -44,14 +44,37 @@
   code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
   .empty { color: #656d76; font-size: 13px; padding: 8px 0; }
   .rs { font-family: ui-monospace, monospace; font-size: 12px; word-break: break-all; background: var(--bg); padding: 6px 8px; border-radius: 6px; }
+  .tabs { display: flex; gap: 4px; max-width: 1180px; margin: 16px auto 0; padding: 0 16px; }
+  .tab { width: auto; margin: 0; padding: 10px 20px; border-radius: 8px 8px 0 0; background: #e6e9ec; color: #424a53; font-size: 14px; }
+  .tab.active { background: #fff; color: var(--blue); border: 1px solid var(--bd); border-bottom-color: #fff; position: relative; top: 1px; }
+  .page { display: none; }
+  .page.active { display: grid; }
+  .spk-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .spk-box { border: 1px solid var(--bd); border-radius: 8px; padding: 10px; background: var(--bg); }
+  .spk-box h3 { margin: 0 0 8px; font-size: 13px; }
+  .mini { font-size: 12px; padding: 6px 8px; }
+  button.secondary { background: #57606a; }
+  button.finish { background: var(--green); }
+  button.small { width: auto; margin-top: 8px; padding: 6px 14px; font-size: 13px; }
+  .stat-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+  .chip { background: var(--bg); border: 1px solid var(--bd); border-radius: 14px; padding: 3px 10px; font-size: 12px; }
+  .chip b { color: var(--blue); }
+  tr.new td { background: #ddf4ff; font-weight: 600; }
+  .badge.s1 { background: #ddf4ff; color: var(--blue); }
+  .badge.s2 { background: #fbefff; color: #8250df; }
+  .blocks-list { font-family: ui-monospace, monospace; font-size: 12px; max-height: 140px; overflow: auto; border: 1px solid var(--bd); border-radius: 6px; padding: 6px 8px; background: var(--bg); }
 </style>
 </head>
 <body>
 <header>
   <h1>唤醒词缺报核对</h1>
-  <p>导入模型分数与回执，对缺报区间内的触发帧进行补记 / 待核 / 冲突判定</p>
+  <p>导入模型分数与回执，对缺报区间内的触发帧进行补记 / 待核 / 冲突判定；另支持双音箱唤醒仲裁试跑</p>
 </header>
-<main>
+<nav class="tabs">
+  <button class="tab active" id="tabSingle" type="button">单音箱缺报核对</button>
+  <button class="tab" id="tabDual" type="button">双音箱试跑</button>
+</nav>
+<main id="pageSingle" class="page active">
   <section class="card">
     <h2>核对输入</h2>
     <label for="scores">模型整数分数（最多 200000 帧，帧号从 0 起）</label>
@@ -93,6 +116,65 @@
       <div class="table-wrap"><table id="rejectTable"></table></div>
     </div>
     <div id="placeholder" class="empty">提交核对后，结论、补记列表与 CSV 下载会显示在这里。</div>
+  </section>
+</main>
+
+<main id="pageDual" class="page">
+  <section class="card">
+    <h2>双音箱试跑配置</h2>
+    <p class="hint">两台音箱同时听见唤醒词时，按窗内最高未冷却达阈分数仲裁，只让一台应答。配置在创建试跑后锁定。</p>
+    <div class="spk-grid">
+      <div class="spk-box">
+        <h3>一号音箱</h3>
+        <label for="dTh1">阈值</label><input type="number" id="dTh1" value="80" />
+        <label for="dCd1">冷却帧数（0～2000）</label><input type="number" id="dCd1" value="3" min="0" max="2000" />
+      </div>
+      <div class="spk-box">
+        <h3>二号音箱</h3>
+        <label for="dTh2">阈值</label><input type="number" id="dTh2" value="80" />
+        <label for="dCd2">冷却帧数（0～2000）</label><input type="number" id="dCd2" value="3" min="0" max="2000" />
+      </div>
+    </div>
+    <label for="dW">等待帧数 W（0～50）：开窗后纳入窗首及之后 W 帧</label>
+    <input type="number" id="dW" value="4" min="0" max="50" />
+    <button id="dCreateBtn">创建试跑</button>
+
+    <h2 style="margin-top:20px;">追加分数块</h2>
+    <p class="hint">每块注明起始帧；首块须从 0 开始，后续须接续本路帧号。两路须对齐、同标度整数；每路最多 20 万帧，单路最多领先 4096 帧，违反则整块退回。</p>
+    <label for="dBlock">本块整数分数（空白 / 逗号 / 换行分隔）</label>
+    <textarea id="dBlock" rows="5" placeholder="例如&#10;90 12 0 85 77"></textarea>
+    <div class="row" style="grid-template-columns: 1fr 1fr;">
+      <div>
+        <label for="dChannel">追加到</label>
+        <select id="dChannel" style="width:100%;padding:7px 9px;border:1px solid var(--bd);border-radius:6px;font-size:13px;">
+          <option value="1">一号音箱</option>
+          <option value="2">二号音箱</option>
+        </select>
+      </div>
+      <div><label for="dStart">起始帧</label><input type="number" id="dStart" value="0" min="0" /></div>
+    </div>
+    <p class="hint" id="dNextHint">尚未创建试跑。</p>
+    <div style="display:flex;gap:8px;">
+      <button id="dAppendBtn" class="small" disabled>追加本块</button>
+      <button id="dFinishBtn" class="small finish" disabled>结束回放</button>
+    </div>
+    <div id="dBanner"></div>
+  </section>
+
+  <section class="card">
+    <h2>试跑状态与应答记录</h2>
+    <div id="dStatus" class="empty">创建试跑并追加分数后，每轮已确定的应答音箱、获选帧与应答帧会显示在这里。</div>
+    <div id="dResult" hidden>
+      <div id="dStatusLine"></div>
+      <div class="stat-row" id="dChips"></div>
+
+      <div class="section-title">已确定应答（每次追加即时更新，不重扫已处理帧）
+        <span id="dAnswerBadge" class="badge ok"></span></div>
+      <div class="table-wrap"><table id="dAnswerTable"></table></div>
+
+      <div class="section-title">已接受分数块审计</div>
+      <div class="blocks-list" id="dBlocks"></div>
+    </div>
   </section>
 </main>
 
@@ -242,6 +324,173 @@ $("runBtn").addEventListener("click", async () => {
     btn.textContent = "开始核对";
   }
 });
+
+// ---------------- 双音箱试跑 ----------------
+
+const dState = { sessionId: null, finished: false, answerCount: 0 };
+let dLastSnap = null;
+let dAutoStart = true;
+
+function showDBanner(kind, text) {
+  const el = $("dBanner");
+  el.innerHTML = text ? `<div class="banner ${kind}" style="margin-top:12px;">${text}</div>` : "";
+}
+
+$("tabSingle").addEventListener("click", () => {
+  $("tabSingle").classList.add("active");
+  $("tabDual").classList.remove("active");
+  $("pageSingle").classList.add("active");
+  $("pageDual").classList.remove("active");
+});
+$("tabDual").addEventListener("click", () => {
+  $("tabDual").classList.add("active");
+  $("tabSingle").classList.remove("active");
+  $("pageDual").classList.add("active");
+  $("pageSingle").classList.remove("active");
+});
+
+function dSetButtons() {
+  const alive = dState.sessionId !== null && !dState.finished;
+  $("dAppendBtn").disabled = !alive;
+  $("dFinishBtn").disabled = dState.sessionId === null || dState.finished;
+  $("dCreateBtn").textContent = dState.sessionId === null ? "创建试跑" : "重新创建试跑（放弃当前会话）";
+}
+
+function dRender(data, highlightNew) {
+  dState.finished = data.finished;
+  dState.answerCount = data.answer_count;
+  $("dResult").hidden = false;
+  $("dStatus").hidden = true;
+  dSetButtons();
+
+  $("dStatusLine").innerHTML = data.finished
+    ? '<span class="badge ok">回放已结束</span> 两路等长，末窗（若有）已按最后一帧结算，拒收新块。'
+    : '<span class="badge pending">进行中</span> 可继续追加；两路等长后才能结束回放。';
+
+  const cfg = data.config;
+  $("dChips").innerHTML = [
+    ["一号 阈值/冷却", `${cfg.thresholds[0]} / ${cfg.cooldowns[0]}`],
+    ["二号 阈值/冷却", `${cfg.thresholds[1]} / ${cfg.cooldowns[1]}`],
+    ["等待帧数 W", cfg.w],
+    ["两路帧数", `${data.lengths[0]} / ${data.lengths[1]}`],
+    ["已处理帧", data.frontier],
+    ["冷却剩余（一/二）", `${data.cooldown_remaining[0]} / ${data.cooldown_remaining[1]}`],
+    ["下一块起始帧", `${data.next_start[0]} / ${data.next_start[1]}`],
+  ].map(([k, v]) => `<span class="chip">${k}：<b>${v}</b></span>`).join("");
+
+  $("dAnswerBadge").textContent = `${data.answer_count} 轮`;
+  const rows = data.answers.map((a, idx) => {
+    const isNew = highlightNew && idx >= data.answer_count - data.new_answers;
+    return `<tr class="${isNew ? "new" : ""}">
+      <td>${a.round}</td>
+      <td><span class="badge s${a.speaker}">${a.speaker === 1 ? "一号" : "二号"}音箱</span></td>
+      <td>${a.selected_frame}</td>
+      <td>${a.answer_frame}</td>
+      <td>${a.window_start}..${a.window_end}</td>
+      <td>${a.score}</td>
+    </tr>`;
+  }).join("");
+  $("dAnswerTable").innerHTML =
+    "<thead><tr><th>轮次</th><th>应答音箱</th><th>获选帧</th><th>应答帧</th><th>窗口</th><th>获选分数</th></tr></thead>"
+    + `<tbody>${rows || '<tr><td class="empty">尚无已确定应答（窗末两路齐收后才结算）。</td></tr>'}</tbody>`;
+
+  $("dBlocks").innerHTML = data.blocks.length
+    ? data.blocks.map((b) =>
+        `#${"一二"[b.channel - 1]}号 · 起始帧 ${b.start_frame} · ${b.frame_count} 帧（${b.start_frame}..${b.end_frame}）`
+      ).join("<br>")
+    : "暂无已接受块。";
+
+  // 起始帧输入默认跟随所选音箱的下一帧号
+  dSyncStart();
+}
+
+function dSyncStart() {
+  if (!dState.sessionId) {
+    $("dNextHint").textContent = "尚未创建试跑。";
+    return;
+  }
+  const ch = Number($("dChannel").value) - 1;
+  $("dNextHint").textContent = `该路下一块起始帧应为 ${dLastSnap ? dLastSnap.next_start[ch] : 0}。`;
+  if (dAutoStart) {
+    $("dStart").value = dLastSnap ? dLastSnap.next_start[ch] : 0;
+  }
+}
+
+$("dChannel").addEventListener("change", () => { dAutoStart = true; dSyncStart(); });
+$("dStart").addEventListener("input", () => { dAutoStart = false; });
+
+async function dCall(url, payload) {
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error(data.detail || resp.statusText);
+  return data;
+}
+
+$("dCreateBtn").addEventListener("click", async () => {
+  try {
+    const data = await dCall("/api/dual/sessions", {
+      threshold_1: Number($("dTh1").value),
+      cooldown_1: Number($("dCd1").value),
+      threshold_2: Number($("dTh2").value),
+      cooldown_2: Number($("dCd2").value),
+      w: Number($("dW").value),
+    });
+    dState.sessionId = data.session_id;
+    dState.finished = false;
+    dState.answerCount = 0;
+    dLastSnap = data;
+    dAutoStart = true;
+    showDBanner("info", "试跑已创建，两台音箱起初均可触发。");
+    dRender(data, false);
+  } catch (err) {
+    showDBanner("error", `创建失败：${err.message}`);
+  }
+});
+
+$("dAppendBtn").addEventListener("click", async () => {
+  if (!dState.sessionId) return;
+  let block;
+  try {
+    block = parseIntList($("dBlock").value, "分数块");
+    if (!block.length) throw new Error("分数块不能为空。");
+  } catch (err) {
+    showDBanner("error", `输入解析失败：${err.message}`);
+    return;
+  }
+  try {
+    const data = await dCall(`/api/dual/sessions/${dState.sessionId}/blocks`, {
+      channel: Number($("dChannel").value),
+      start_frame: Number($("dStart").value),
+      block,
+    });
+    dLastSnap = data;
+    const newText = data.new_answers > 0 ? `本次新确定 ${data.new_answers} 轮应答（高亮行）。` : "本次追加未产生新的已确定应答。";
+    showDBanner("info", `块已接受（${block.length} 帧）。${newText}`);
+    $("dBlock").value = "";
+    dAutoStart = true;
+    dRender(data, true);
+  } catch (err) {
+    showDBanner("error", `追加被拒绝，整块退回：${err.message}`);
+  }
+});
+
+$("dFinishBtn").addEventListener("click", async () => {
+  if (!dState.sessionId) return;
+  try {
+    const data = await dCall(`/api/dual/sessions/${dState.sessionId}/finish`, {});
+    dLastSnap = data;
+    showDBanner("info", "回放结束：两路等长，悬而未决的末窗已按最后一帧结算。");
+    dRender(data, true);
+  } catch (err) {
+    showDBanner("error", `结束失败，可继续追加后重试：${err.message}`);
+  }
+});
+
+dSetButtons();
 </script>
 </body>
 </html>
